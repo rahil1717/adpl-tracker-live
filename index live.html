@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ADPL Tracker - Official Standings</title>
+
+<style>
+body { 
+  font-family: system-ui, -apple-system, sans-serif; 
+  max-width: 1100px; 
+  margin: 0 auto; 
+  padding: 20px; 
+  background: linear-gradient(135deg, #1e3a8a 0%, #3730a3 50%, #7c3aed 100%); 
+  color: white; 
+}
+
+h1, h2 { 
+  text-align: center; 
+  text-shadow: 0 2px 4px rgba(0,0,0,0.4); 
+}
+
+.logo-adpl { 
+  height: 60px; 
+  border-radius: 12px; 
+}
+
+.export-btn {
+  display:block;
+  margin:20px auto;
+  padding:12px 24px;
+  font-size:16px;
+  font-weight:bold;
+  border:none;
+  border-radius:8px;
+  background:linear-gradient(135deg,#2563eb,#7c3aed);
+  color:white;
+  cursor:pointer;
+  box-shadow:0 4px 10px rgba(0,0,0,0.3);
+}
+
+.tournament { 
+  background: rgba(255,255,255,0.95); 
+  color: #333; 
+  border-radius: 16px; 
+  padding: 25px; 
+  margin-bottom: 30px; 
+  box-shadow: 0 20px 50px rgba(30,58,138,0.4); 
+}
+
+table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
+th, td { border: 1px solid #e0e0e0; padding: 10px; text-align: center; }
+th { background: linear-gradient(135deg, #1e40af, #3730a3, #7c3aed); color: white; }
+
+.team-cell { text-align:left; display:flex; align-items:center; gap:10px; }
+.team-logo { height:28px; }
+
+.tie-score { font-weight:800; margin-left:10px; }
+
+.stats { margin-top:10px; font-weight:500; }
+
+/* PRINT STYLING */
+@media print {
+
+  body {
+    background:white !important;
+    color:black !important;
+  }
+
+  h1 {
+    text-shadow:none !important;
+    color:black !important;
+  }
+
+  .export-btn {
+    display:none !important;
+  }
+
+  .tournament {
+    box-shadow:none !important;
+    background:white !important;
+  }
+
+  th {
+    background:#e5e7eb !important;
+    color:black !important;
+  }
+
+}
+</style>
+</head>
+
+<body>
+
+<h1>
+<img src="adpl-logo.png" class="logo-adpl">
+ADPL Official Standings
+</h1>
+
+<button class="export-btn" onclick="exportPDF()">📄 Export Standings to PDF</button>
+
+<div style="text-align:center;margin-bottom:20px;font-weight:600;">
+<span id="today-date"></span>
+</div>
+
+<div class="tournament">
+<h2>1AB (AA, AB, BB)</h2>
+<div id="ab-section"></div>
+<table id="ab-standings">
+<thead>
+<tr><th>#</th><th>Team</th><th>Ties</th><th>Diff</th><th>Games</th><th>Pts</th></tr>
+</thead>
+<tbody></tbody>
+</table>
+<div id="ab-stats" class="stats"></div>
+</div>
+
+<div class="tournament">
+<h2>W+EP (EP1,EP2,WW1,WW2,+45,MIX,NXT)</h2>
+<div id="wep-section"></div>
+<table id="wep-standings">
+<thead>
+<tr><th>#</th><th>Team</th><th>Ties</th><th>Diff</th><th>Games</th><th>Pts</th></tr>
+</thead>
+<tbody></tbody>
+</table>
+<div id="wep-stats" class="stats"></div>
+</div>
+
+<script>
+
+/* ===========================
+   🏆 ADMIN EDIT ZONE
+   =========================== */
+
+const AB_SCORES = {
+  "VD Smashers vs VR Aces": {
+    AA:[9,5], AB:[7,9], BB:[9,3]
+  }
+};
+
+const WEP_SCORES = {
+  "VD Smashers vs VR Aces": {
+    EP1:[9,4], EP2:[6,9], WW1:[0,0], WW2:[0,0],
+    "+45":[0,0], MIX:[0,0], NXT:[0,0]
+  }
+};
+
+/* =========================== */
+
+const TEAM_LOGOS = {
+  'VD Smashers':'vd-smashers.png',
+  'VR Aces':'vr-aces.png',
+  'RJ Royals':'rj-royals.png',
+  'Maccabi United':'maccabi-united.png',
+  'Dia9ers':'dia9ers.png'
+};
+
+const TEAMS = Object.keys(TEAM_LOGOS);
+const AB_TYPES = ['AA','AB','BB'];
+const WEP_TYPES = ['EP1','EP2','WW1','WW2','+45','MIX','NXT'];
+
+function parsePair(name){ const [h,a]=name.split(" vs "); return {h,a}; }
+
+function buildSection(sectionId, types, scoreData){
+  let html='';
+  Object.keys(scoreData).forEach(pair=>{
+    const {h,a}=parsePair(pair);
+    html+=`<h3>${h} vs ${a}</h3><table><thead>
+    <tr><th>Match</th><th>${h}</th><th>${a}</th></tr></thead><tbody>`;
+    types.forEach(t=>{
+      const g=scoreData[pair][t]||[0,0];
+      html+=`<tr><td>${t}</td><td>${g[0]}</td><td>${g[1]}</td></tr>`;
+    });
+    html+='</tbody></table><br>';
+  });
+  document.getElementById(sectionId).innerHTML=html;
+}
+
+function calcStandings(scoreData, types){
+  const stats={};
+  TEAMS.forEach(t=>stats[t]={tieWins:0,tieLosses:0,points:0,games:0,diff:0});
+
+  Object.keys(scoreData).forEach(pair=>{
+    const {h,a}=parsePair(pair);
+    let hWins=0,hGames=0,aGames=0;
+
+    types.forEach(t=>{
+      const g=scoreData[pair][t]||[0,0];
+      hGames+=g[0]; aGames+=g[1];
+      if(g[0]>=9&&g[0]>g[1]) hWins++;
+    });
+
+    const aWins=types.length-hWins;
+
+    if(hWins>types.length/2){
+      stats[h].tieWins++; stats[a].tieLosses++;
+      stats[h].points+=2; stats[a].points+=1;
+    } else if(aWins>types.length/2){
+      stats[a].tieWins++; stats[h].tieLosses++;
+      stats[a].points+=2; stats[h].points+=1;
+    }
+
+    stats[h].diff+=hGames-aGames;
+    stats[a].diff+=aGames-hGames;
+    stats[h].games+=hGames;
+    stats[a].games+=aGames;
+  });
+
+  return Object.entries(stats)
+  .sort(([,a],[,b])=>b.points-a.points||b.diff-a.diff)
+  .map(([t,s],i)=>({rank:i+1,team:t,ties:`${s.tieWins}-${s.tieLosses}`,diff:s.diff,games:s.games,pts:s.points}));
+}
+
+function buildStandings(tableId, statsId, data, types,label){
+  const sorted=calcStandings(data,types);
+  document.querySelector(`#${tableId} tbody`).innerHTML=
+  sorted.map(s=>`
+  <tr>
+  <td>${s.rank}</td>
+  <td class="team-cell"><img src="${TEAM_LOGOS[s.team]}" class="team-logo">${s.team}</td>
+  <td>${s.ties}</td>
+  <td>${s.diff}</td>
+  <td>${s.games}</td>
+  <td><strong>${s.pts}</strong></td>
+  </tr>`).join('');
+  document.getElementById(statsId).innerHTML=
+  `Leader: ${sorted[0]?.team||'TBD'} (${sorted[0]?.pts||0} pts)`;
+}
+
+function exportPDF(){ window.print(); }
+
+function init(){
+  document.getElementById("today-date").innerText =
+  "Updated: " + new Date().toLocaleDateString();
+  buildSection('ab-section',AB_TYPES,AB_SCORES);
+  buildSection('wep-section',WEP_TYPES,WEP_SCORES);
+  buildStandings('ab-standings','ab-stats',AB_SCORES,AB_TYPES,'AB');
+  buildStandings('wep-standings','wep-stats',WEP_SCORES,WEP_TYPES,'W+EP');
+}
+
+init();
+
+</script>
+
+</body>
+</html>
